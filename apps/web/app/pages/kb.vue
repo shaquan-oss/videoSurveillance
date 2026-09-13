@@ -798,7 +798,7 @@ if (!selectedFile.value && firstFile) await selectFile(firstFile);
 <style scoped>
 .kb2 { display: flex; gap: 16px; height: calc(100vh - 56px - 26px - 40px); }
 .ktree {
-  width: 240px; min-width: 200px; flex: 0 0 auto; background: var(--surface);
+  width: 300px; min-width: 260px; flex: 0 0 auto; background: var(--surface);
   border: 1px solid var(--line); border-radius: var(--r);
   display: flex; flex-direction: column; overflow: hidden;
 }

@@ -184,14 +184,13 @@ function activate() {
 .nm {
   flex: 1;
   min-width: 0;
-  /* 允许换行：深嵌套时名字也能完整显示，避免被截成 … */
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .more {
   flex-shrink: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   width: 20px;
@@ -201,12 +200,11 @@ function activate() {
   background: transparent;
   color: var(--ink-3);
   cursor: pointer;
-  opacity: 0;
   font-size: 12px;
   line-height: 1;
 }
 .knode:hover .more {
-  opacity: 1;
+  display: flex;
 }
 .more:hover {
   background: var(--g200, var(--g100));
