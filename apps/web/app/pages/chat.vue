@@ -309,6 +309,32 @@ async function delConv(id: string) {
 const atOpen = ref(false);
 const slashOpen = ref(false);
 
+/**
+ * @菜单的关闭行为。
+ *
+ * 原来只能"再点一次按钮"才能关，但用户普遍期望点空白处或按 Esc 就能关掉 ——
+ * 菜单还会盖住下方的示例卡片，关不掉很恼人。
+ * atMenuRef 同时包住按钮与菜单，据此判断点击是否落在它们之外。
+ */
+const atMenuRef = ref<HTMLElement | null>(null);
+
+function onDocClick(e: MouseEvent) {
+  if (!atOpen.value) return;
+  const el = atMenuRef.value;
+  if (el && !el.contains(e.target as Node)) atOpen.value = false;
+}
+function onDocKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && atOpen.value) atOpen.value = false;
+}
+onMounted(() => {
+  document.addEventListener('click', onDocClick);
+  document.addEventListener('keydown', onDocKeydown);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick);
+  document.removeEventListener('keydown', onDocKeydown);
+});
+
 function toggleScope(id: string) {
   scopeKbIds.value = scopeKbIds.value.includes(id) ? scopeKbIds.value.filter((x) => x !== id) : [...scopeKbIds.value, id];
 }
@@ -555,27 +581,34 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 
         <div class="comp big">
           <textarea v-model="input" placeholder="例如：差旅报销要准备哪些材料？流程是怎么走的？" @keydown.enter.exact.prevent="send()" />
-          <div class="cbar">
-            <button class="pill" :class="{ on: atOpen }" @click="atOpen = !atOpen; slashOpen = false"><span class="mention">@</span>引用知识库</button>
-            <span class="spacer" />
-            <button v-if="activeAgent" class="pill on" @click="clearAgent">
-              {{ activeAgent.icon }} {{ activeAgent.name }} ×
-            </button>
-            <div class="mp">
-              <select v-model="selectedModel" class="mp-select">
-                <option value="">默认模型</option>
-                <option v-for="m in chatModels" :key="m.key" :value="m.key">{{ m.displayName }}</option>
-              </select>
+          <!-- atMenuRef 同时包住按钮与菜单，供「点击外部关闭」判断边界 -->
+          <div ref="atMenuRef" class="at-wrap">
+            <div class="cbar">
+              <button class="upbtn" :disabled="uploading" @click="pickUpload">
+                {{ uploading ? '上传中…' : '＋ 上传文件' }}
+              </button>
+              <button class="pill" :class="{ on: atOpen }" @click="atOpen = !atOpen; slashOpen = false"><span class="mention">@</span>引用知识库</button>
+              <span class="spacer" />
+              <button v-if="activeAgent" class="pill on" @click="clearAgent">
+                {{ activeAgent.icon }} {{ activeAgent.name }} ×
+              </button>
+              <div class="mp">
+                <select v-model="selectedModel" class="mp-select">
+                  <option value="">默认模型</option>
+                  <option v-for="m in chatModels" :key="m.key" :value="m.key">{{ m.displayName }}</option>
+                </select>
+              </div>
+              <button class="send" :disabled="sending" @click="send()">发送</button>
             </div>
-            <button class="send" :disabled="sending" @click="send()">发送</button>
-          </div>
-          <div v-if="atOpen" class="menu-wide">
-            <div class="mh">引用知识库，限定这次回答的范围</div>
-            <div v-for="kb in kbs" :key="kb.id" class="mwi" @click="toggleScope(kb.id)">
-              <span class="nm">{{ kb.name }}</span>
-              <span v-if="scopeKbIds.includes(kb.id)" class="ck">✓</span>
+            <div v-if="atOpen" class="menu-wide">
+              <div class="mh">引用知识库，限定这次回答的范围</div>
+              <div v-for="kb in kbs" :key="kb.id" class="mwi" @click="toggleScope(kb.id)">
+                <span class="nm">{{ kb.name }}</span>
+                <span v-if="scopeKbIds.includes(kb.id)" class="ck">✓</span>
+              </div>
+              <div v-if="!kbs.length" class="mh">还没有知识库</div>
+              <div v-else class="mh mh-foot">点击空白处或按 Esc 关闭 · 上传的文件会进入所选知识库</div>
             </div>
-            <div v-if="!kbs.length" class="mh">还没有知识库</div>
           </div>
         </div>
 
@@ -717,7 +750,6 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
             <button class="upbtn" :disabled="uploading" @click="pickUpload">
               {{ uploading ? '上传中…' : '＋ 上传文件' }}
             </button>
-            <input ref="uploadInput" type="file" multiple style="display: none" @change="onUpload" />
             <button v-for="kb in kbs" :key="kb.id" class="pill" :class="{ on: scopeKbIds.includes(kb.id) }" @click="toggleScope(kb.id)">@{{ kb.name }}</button>
             <button v-if="activeAgent" class="pill on" @click="clearAgent">
               {{ activeAgent.icon }} {{ activeAgent.name }} ×
@@ -754,6 +786,12 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
         <div class="modal-f"><span class="spacer" /><button class="btn" @click="renamingId = null">取消</button><button class="btn primary" @click="renameConv">保存</button></div>
       </div>
     </div>
+
+    <!--
+      文件选择器放在最外层：hero（新会话）与会话内两个工具栏都要用它。
+      模板 ref 同名会被后者覆盖，所以只能留一份，且不能被 v-if 影响。
+    -->
+    <input ref="uploadInput" type="file" multiple style="display: none" @change="onUpload" />
 
     <div class="toasts">
       <div v-for="t in toasts" :key="t.id" class="toast" :class="t.kind">{{ t.text }}</div>
@@ -809,6 +847,8 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 .send:disabled { opacity: .5; cursor: not-allowed; }
 
 .menu-wide { position: absolute; bottom: 66px; left: 12px; width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh-pop); padding: 6px; z-index: 20; }
+/* 菜单底部的操作提示，与上面的知识库列表隔开 */
+.mh-foot { border-top: 1px solid var(--line-soft); margin-top: 4px; padding-top: 8px; }
 .mh { font-size: 11.5px; color: var(--ink-3); padding: 6px 8px; }
 .mwi { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: var(--r-xs); font-size: 13px; cursor: pointer; }
 .mwi:hover { background: var(--g100); }
