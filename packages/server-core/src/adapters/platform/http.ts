@@ -17,7 +17,8 @@ export type HttpBody = string | Uint8Array | ArrayBuffer | Blob | FormData | URL
 
 export interface PlatformFetchOptions {
   method?: 'GET' | 'POST';
-  headers: Record<string, string>;
+  /** 可选。multipart 上传时不要传 —— 让 fetch 自己补 Content-Type + boundary */
+  headers?: Record<string, string>;
   body?: HttpBody;
   timeoutMs?: number;
   signal?: AbortSignal;

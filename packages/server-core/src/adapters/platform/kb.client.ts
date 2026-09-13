@@ -4,13 +4,13 @@
  * 设计要点：
  * 1. 路径：POST /openapi/flames/api/v1/knowledge/document/upload，body 是 multipart/form-data，
  *    字段：files（多文件）、libId、categoryId、fileType（text=纯文本文档 / qa=问答对）。
- * 2. 鉴权走 buildBearerAuth，extra 不传（手册上上传接口只靠 appId 鉴权，
- *    关联的知识库是否授权由「应用管理 → 资源授权」配置）。
+ * 2. 鉴权走 URL 查询参数（buildQueryAuth），**不是** Authorization 头 —— 该接口只认前者。
+ *    关联的知识库是否可写由「应用管理 → 资源授权」决定，与本客户端无关。
  * 3. 平台接口「HTTP 200 但解析失败」是高频踩坑点 —— 不在客户端内做回查，把这件事
  *    留给 sync 服务的「上传成功 → 写 uploaded → 由轮询或回调转 indexed」流程。
  * 4. 限速：QPS≤10/分钟 → 间隔 6500ms；上传是 I/O 重活，间隔稍微给大点。
  */
-import { buildBearerAuth } from './signature.ts';
+import { buildQueryAuth } from './signature.ts';
 import {
   RateLimiter,
   platformFetch,
@@ -76,17 +76,17 @@ export class PlatformKbClient {
   }
 
   async upload(input: PlatformUploadInput): Promise<PlatformUploadResult> {
-    const path = UPLOAD_PATH;
-    const url = `http://${this.opts.host}${path}`;
-    const headers = {
-      Authorization: buildBearerAuth({
+    // 鉴权走 URL 查询参数（该接口不认 Authorization 头，会回 401「签名参数为空」）
+    const qs = new URLSearchParams(
+      buildQueryAuth({
         host: this.opts.host,
         method: 'POST',
-        path,
+        path: UPLOAD_PATH,
         appId: this.opts.appId,
         appSecret: this.opts.appSecret,
       }),
-    };
+    );
+    const url = `http://${this.opts.host}${UPLOAD_PATH}?${qs.toString()}`;
 
     const form = new FormData();
     // 字段顺序：libId/categoryId/fileType 三个字段名是手册定死的，files 是上传文件
@@ -100,10 +100,9 @@ export class PlatformKbClient {
     let res: Response;
     try {
       // 注意：fetch 见到 multipart body 会自动补 Content-Type + boundary，
-      // 这里 headers 不能再手动塞 Content-Type，否则 boundary 会缺失。
+      // 这里不要再手动塞任何 Content-Type，否则 boundary 会缺失。
       res = await platformFetch(url, {
         method: 'POST',
-        headers,
         body: form,
         timeoutMs: this.opts.timeoutMs ?? 90_000,
       });

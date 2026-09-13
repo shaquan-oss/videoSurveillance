@@ -1,18 +1,29 @@
 /**
  * 聚智平台 OpenAPI 鉴权共用工件。
  *
- * 三个调用方都用同一套签名规则：
- *   - LLM 推理（jiutian.provider）：POST /openapi/flames/api/v1/openai/chat
- *   - 远程智能体：POST /openapi/flames/api/v1/chat?assistantCode=xxx
- *   - 知识库文档上传：POST /openapi/flames/api/v1/knowledge/document/upload
+ * ⚠️ 平台上有**两套并存且不可混用**的鉴权方式（实测结论，2026-09-13）：
  *
- * 三处签名只差「额外字段」不同（model / assistantCode 等），其它都一致。
- * 把这部分抽出来，省得三处各自实现又各自踩坑：
+ * A. Bearer 头 —— `buildBearerAuth()`，仅用于 openai 兼容的模型推理接口
+ *      POST /openapi/flames/api/v1/openai/chat
+ *      Authorization: Bearer base64(`hmac api_key="…", algorithm=…, …, traceId/host/date/request-line`)
+ *
+ * B. URL 查询参数 —— `buildQueryAuth()`，用于智能体与知识库接口
+ *      POST /openapi/flames/api/v1/chat?assistantCode=xxx
+ *      POST /openapi/flames/api/v1/knowledge/document/upload
+ *      查询串带 host / date / authorization / [assistantCode]
+ *
+ * 用错位置的后果（同一套凭证实测）：
+ *   - 智能体接口用 Bearer   → 401「签名参数为空」（平台完全没读到签名）
+ *   - 智能体接口用 URL 参数 → 通过（401「请求接口未授权或不存在」＝签名已过，只差有效 assistantCode）
+ *   - 知识库接口用 Bearer   → 401「签名参数为空」
+ *   - 知识库接口用 URL 参数 → 通过（进到业务层）
+ *
+ * 两条硬约束：
  *   1. 签名字串里的 host 不带端口号，但请求地址要带端口
- *   2. auth 串里参数之间必须是「逗号 + 空格」，用纯空格网关判「认证信息格式不正确」
- *   3. extra 字段顺序在 signature 前后都可，只要保持和签名 headers 的拆字段一致
+ *   2. URL 参数方式的 authorization **只能**含 api_key / algorithm / headers / signature
+ *      四个字段；多塞 assistantCode / traceId 之类会报「认证信息格式不正确」
  *
- * 这里只关心「怎么签」，不关心请求体和超时策略 —— 那些由各家 client 自己拼。
+ * 这里只关心「怎么签」，不关心请求体与超时 —— 那些由各家 client 自己拼。
  */
 import { createHmac, randomUUID } from 'node:crypto';
 
@@ -69,6 +80,45 @@ export function authHeaders(opts: AuthInputs, contentType = 'application/json'):
     Authorization: buildBearerAuth(opts),
     'Content-Type': contentType,
   };
+}
+
+export interface QueryAuthInputs {
+  /** 形如 10.0.0.1:30000，签名时只取前半段 */
+  host: string;
+  /** 目前需要 URL 参数签名的接口都是 POST */
+  method: 'POST';
+  /** 签名用的路径，**不含查询串** */
+  path: string;
+  appId: string;
+  appSecret: string;
+  /** 智能体接口必填（应用关联的智能体编码）；知识库接口不传 */
+  assistantCode?: string;
+}
+
+/**
+ * 构造 URL 查询参数形式的鉴权（智能体 / 知识库接口专用）。
+ *
+ * 返回的对象直接拼进请求 URL 的查询串即可。**切勿**再设 `Authorization` 头 ——
+ * 这两个接口不认，平台会回 401「签名参数为空」。
+ */
+export function buildQueryAuth(opts: QueryAuthInputs): Record<string, string> {
+  const host = opts.host.split(':')[0];
+  const date = new Date().toUTCString();
+  const requestLine = `${opts.method} ${opts.path} HTTP/1.1`;
+
+  const signingString = `host: ${host}\ndate: ${date}\n${requestLine}`;
+  const signature = createHmac('sha256', opts.appSecret).update(signingString).digest('base64');
+
+  // 只能含这 4 个字段：多塞 assistantCode / traceId / host / date 会报「认证信息格式不正确」
+  const authOrigin = `hmac api_key="${opts.appId}", algorithm="hmac-sha256", headers="host date request-line", signature="${signature}"`;
+
+  const params: Record<string, string> = {
+    host,
+    date,
+    authorization: Buffer.from(authOrigin, 'utf8').toString('base64'),
+  };
+  if (opts.assistantCode) params.assistantCode = opts.assistantCode;
+  return params;
 }
 
 /**

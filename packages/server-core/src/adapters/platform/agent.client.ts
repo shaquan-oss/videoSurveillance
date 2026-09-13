@@ -2,8 +2,8 @@
  * 远程智能体客户端 —— 转发问题到聚智平台，由平台原生智能体做 RAG + 生成。
  *
  * 设计要点：
- * 1. 协议：POST /openapi/flames/api/v1/chat，URL 拼 `assistantCode` 查询参数。
- *    鉴权仍走 hmac-sha256，与模型调用共用 buildBearerAuth（extra 里塞 assistantCode）。
+ * 1. 协议：POST /openapi/flames/api/v1/chat，鉴权与 assistantCode 都放 URL 查询参数
+ *    （buildQueryAuth）。**不要**用 Authorization 头 —— 该接口不认，会回 401「签名参数为空」。
  * 2. 响应是 SSE 流；事件类型至少有：delta（输出片段）/ reference（引用来源）/ recommend（追问建议）/
  *    progress（执行进度，含技能/知识库检索过程）。本客户端只解析，业务方按 type 自己分发。
  * 3. 多轮上下文：第一次调用从请求里拿 platformSessionId 字段；响应里也会回带，存到
@@ -13,7 +13,7 @@
  *
  * 仍未联调：assistant/knowledge/document 三条 path 是按手册草稿写的，会在阶段 0 用 probe 脚本验证。
  */
-import { buildBearerAuth } from './signature.ts';
+import { buildQueryAuth } from './signature.ts';
 import {
   RateLimiter,
   platformFetch,
@@ -93,17 +93,20 @@ export class PlatformAgentClient {
    * 遇到 error/timeout 时抛出 PlatformAgentError。
    */
   async *chatStream(req: PlatformChatRequest): AsyncGenerator<PlatformAgentEvent, void, unknown> {
-    const path = `${CHAT_PATH}?assistantCode=${encodeURIComponent(req.assistantCode)}`;
-    const url = `http://${this.opts.host}${path}`;
-    const headers = {
-      Authorization: buildBearerAuth({
+    // 签名基于纯路径（不含查询串）；鉴权参数和 assistantCode 都挂在查询串上。
+    // 切勿改用 Authorization 头 —— 该接口不认，会回 401「签名参数为空」。
+    const qs = new URLSearchParams(
+      buildQueryAuth({
         host: this.opts.host,
         method: 'POST',
-        path,
+        path: CHAT_PATH,
         appId: this.opts.appId,
         appSecret: this.opts.appSecret,
-        extra: { assistantCode: req.assistantCode },
+        assistantCode: req.assistantCode,
       }),
+    );
+    const url = `http://${this.opts.host}${CHAT_PATH}?${qs.toString()}`;
+    const headers = {
       'Content-Type': 'application/json',
       Accept: 'text/event-stream',
     };

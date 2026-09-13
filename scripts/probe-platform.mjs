@@ -6,25 +6,31 @@
  * 这些事不该等到跑 smoke 才发现。脚本自己用 Node 原生 crypto 重实现签名，
  * 不依赖 server-core 的构建产物，单文件可读。
  *
+ * ⚠️ 鉴权关键（实测结论）：聚智平台有**两套**鉴权，用错位置会得到误导性的 401。
+ *   本脚本要测的这两个接口都用 **URL 查询参数**方式，**不是** Authorization 头：
+ *     - 智能体：POST /openapi/flames/api/v1/chat?host=..&date=..&authorization=..&assistantCode=..
+ *     - 知识库：POST /openapi/flames/api/v1/knowledge/document/upload?host=..&date=..&authorization=..
+ *   用 Authorization 头 → 401「签名参数为空」（平台根本没读到签名，很容易误判成"没权限"）。
+ *
  * 用法：
  *   node scripts/probe-platform.mjs chat        # 只测智能体对话
  *   node scripts/probe-platform.mjs upload      # 只测文档上传
  *   node scripts/probe-platform.mjs             # 两个都跑
  *
  * 环境变量（必须都设，缺一个直接退出）：
- *   PLATFORM_HOST          例：10.0.0.1:30000（带端口）
- *   PLATFORM_APP_ID        应用 id
- *   PLATFORM_APP_SECRET    应用密钥
- *   PLATFORM_ASSISTANT_CODE 智能体 code（chat 模式用）
- *   PLATFORM_LIB_ID        平台知识库 id（upload 模式用）
- *   PLATFORM_CATEGORY_ID   平台知识库分类 id（upload 模式用）
+ *   PLATFORM_HOST            例：10.0.0.1:30000（带端口）
+ *   PLATFORM_APP_ID          应用 id
+ *   PLATFORM_APP_SECRET      应用密钥
+ *   PLATFORM_ASSISTANT_CODE  智能体 code（chat 模式用）
+ *   PLATFORM_LIB_ID          平台知识库 id（upload 模式用）
+ *   PLATFORM_CATEGORY_ID     平台知识库分类 id（upload 模式用）
  *
  * 可选：
- *   PLATFORM_PROBE_TEXT    自定义问候语，默认 "你好"
- *   PLATFORM_PROBE_FILE    自定义上传文件名，默认 "probe-<ts>.txt"
+ *   PLATFORM_PROBE_TEXT      自定义问候语，默认 "你好"
+ *   PLATFORM_PROBE_FILE      自定义上传文件名，默认 "probe-<ts>.txt"
  */
 
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 
 const HOST = process.env.PLATFORM_HOST;
 const APP_ID = process.env.PLATFORM_APP_ID;
@@ -34,6 +40,9 @@ const LIB_ID = process.env.PLATFORM_LIB_ID;
 const CATEGORY_ID = process.env.PLATFORM_CATEGORY_ID;
 
 const MODE = (process.argv[2] ?? 'both').toLowerCase();
+
+const CHAT_PATH = '/openapi/flames/api/v1/chat';
+const UPLOAD_PATH = '/openapi/flames/api/v1/knowledge/document/upload';
 
 /* ─────────── 工具 ─────────── */
 
@@ -54,27 +63,28 @@ const C = {
   bold: (s) => `\x1b[1m${s}\x1b[0m`,
 };
 
-function buildBearerAuth({ host, method, path, appId, appSecret, extra }) {
+/**
+ * 构造 URL 查询参数形式的鉴权。
+ * authorization 里**只能**有这 4 个字段，多塞字段平台会回「认证信息格式不正确」。
+ */
+function buildQueryAuth({ host, method, path, appId, appSecret, assistantCode }) {
   const hostOnly = host.split(':')[0];
   const date = new Date().toUTCString();
   const requestLine = `${method} ${path} HTTP/1.1`;
-  const traceId = randomUUID();
+  const signature = createHmac('sha256', appSecret)
+    .update(`host: ${hostOnly}\ndate: ${date}\n${requestLine}`)
+    .digest('base64');
+  const authOrigin =
+    `hmac api_key="${appId}", algorithm="hmac-sha256", ` +
+    `headers="host date request-line", signature="${signature}"`;
 
-  const signingString = `host: ${hostOnly}\ndate: ${date}\n${requestLine}`;
-  const signature = createHmac('sha256', appSecret).update(signingString).digest('base64');
-
-  const pairs = [
-    `hmac api_key="${appId}"`,
-    `algorithm="hmac-sha256"`,
-    `headers="host date request-line"`,
-    `signature="${signature}"`,
-    ...Object.entries(extra ?? {}).map(([k, v]) => `${k}="${String(v).replace(/"/g, '\\"')}"`),
-    `traceId="${traceId}"`,
-    `host="${hostOnly}"`,
-    `date="${date}"`,
-    `request-line="${requestLine}"`,
-  ];
-  return `Bearer ${Buffer.from(pairs.join(', '), 'utf8').toString('base64')}`;
+  const params = {
+    host: hostOnly,
+    date,
+    authorization: Buffer.from(authOrigin, 'utf8').toString('base64'),
+  };
+  if (assistantCode) params.assistantCode = assistantCode;
+  return new URLSearchParams(params).toString();
 }
 
 function fmtMs(ms) {
@@ -92,27 +102,21 @@ function dump(prefix, obj) {
 async function probeChat() {
   console.log(`\n${C.bold(C.cyan('━━━ chat 探测'))}  host=${HOST}  assistantCode=${ASSISTANT_CODE}`);
 
-  const path = `/openapi/flames/api/v1/chat?assistantCode=${encodeURIComponent(ASSISTANT_CODE)}`;
-  const url = `http://${HOST}${path}`;
+  const qs = buildQueryAuth({
+    host: HOST,
+    method: 'POST',
+    path: CHAT_PATH,
+    appId: APP_ID,
+    appSecret: APP_SECRET,
+    assistantCode: ASSISTANT_CODE,
+  });
+  const url = `http://${HOST}${CHAT_PATH}?${qs}`;
   const text = process.env.PLATFORM_PROBE_TEXT ?? '你好';
-
-  const headers = {
-    Authorization: buildBearerAuth({
-      host: HOST,
-      method: 'POST',
-      path,
-      appId: APP_ID,
-      appSecret: APP_SECRET,
-      extra: { assistantCode: ASSISTANT_CODE },
-    }),
-    'Content-Type': 'application/json',
-    Accept: 'text/event-stream',
-  };
 
   const t0 = Date.now();
   const res = await fetch(url, {
     method: 'POST',
-    headers,
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
     body: JSON.stringify({ messages: [{ role: 'user', content: text }] }),
     signal: AbortSignal.timeout(120_000),
   });
@@ -121,7 +125,13 @@ async function probeChat() {
 
   if (res.status >= 400) {
     const body = await res.text();
-    console.log(C.red(`响应体：\n${body.slice(0, 1000)}`));
+    console.log(`响应体：\n${body.slice(0, 1000)}`);
+    if (res.status === 401 && body.includes('签名参数为空')) {
+      console.log(C.red('→ 签名没被平台读到。鉴权参数必须拼在 URL 查询串上，不能用 Authorization 头。'));
+    } else if (res.status === 401 && body.includes('请求接口未授权或不存在')) {
+      console.log(C.yellow('→ 签名已通过 ✓，卡在这个 assistantCode 上（无效 / 未关联给该应用）。'));
+      console.log(C.yellow('  需要在聚智平台建好智能体，并在 API 管理里把它关联给当前应用。'));
+    }
     throw new Error(`HTTP ${res.status}`);
   }
 
@@ -165,7 +175,6 @@ async function probeChat() {
         continue;
       }
 
-      // 错误码
       const errCode = evt.code ?? evt.error_code ?? evt.error?.code;
       if (errCode !== undefined && errCode !== null && errCode !== 0 && errCode !== '0') {
         counts.error += 1;
@@ -176,7 +185,6 @@ async function probeChat() {
 
       const typeField = evt.type ?? evt.event ?? 'delta';
 
-      // 抽出可读内容
       let snippet = '';
       if (typeof evt.content === 'string') snippet = evt.content;
       else if (Array.isArray(evt.choices) && evt.choices[0]) {
@@ -190,7 +198,6 @@ async function probeChat() {
 
       if (typeField === 'delta' || (!typeField && snippet)) answer += snippet;
 
-      // 前 5 帧完整打印，后面的只打摘要
       if (total <= 5) dump(`[${typeField}] `, evt);
     }
   }
@@ -205,8 +212,14 @@ async function probeChat() {
 async function probeUpload() {
   console.log(`\n${C.bold(C.cyan('━━━ upload 探测'))}  host=${HOST}  libId=${LIB_ID}  categoryId=${CATEGORY_ID}`);
 
-  const path = '/openapi/flames/api/v1/knowledge/document/upload';
-  const url = `http://${HOST}${path}`;
+  const qs = buildQueryAuth({
+    host: HOST,
+    method: 'POST',
+    path: UPLOAD_PATH,
+    appId: APP_ID,
+    appSecret: APP_SECRET,
+  });
+  const url = `http://${HOST}${UPLOAD_PATH}?${qs}`;
   const fileName = process.env.PLATFORM_PROBE_FILE ?? `probe-${Date.now()}.txt`;
   const body = `# probe ${new Date().toISOString()}\n\n你好，这是来自本地服务的连通性探测。\n`;
 
@@ -216,20 +229,9 @@ async function probeUpload() {
   form.append('fileType', 'text');
   form.append('files', new Blob([body], { type: 'text/plain' }), fileName);
 
-  const headers = {
-    Authorization: buildBearerAuth({
-      host: HOST,
-      method: 'POST',
-      path,
-      appId: APP_ID,
-      appSecret: APP_SECRET,
-    }),
-  };
-
   const t0 = Date.now();
   const res = await fetch(url, {
     method: 'POST',
-    headers,
     body: form,
     signal: AbortSignal.timeout(90_000),
   });
@@ -238,15 +240,22 @@ async function probeUpload() {
   console.log(`HTTP ${res.status}  ${fmtMs(Date.now() - t0)}`);
   dump('响应：', text.slice(0, 1500));
 
-  if (res.status >= 400) {
-    throw new Error(`HTTP ${res.status}`);
-  }
-
+  // 平台业务失败也返回 200，必须看正文里的 code
   let parsed;
   try {
     parsed = JSON.parse(text);
   } catch {
     throw new Error('响应不是 JSON：' + text.slice(0, 200));
+  }
+
+  const bizCode = parsed.header?.code ?? parsed.code;
+  if (bizCode !== undefined && bizCode !== 0 && bizCode !== 200) {
+    const msg = parsed.header?.message ?? parsed.message ?? '';
+    console.log(C.red(`\n✗ 业务失败：code=${bizCode} ${msg}`));
+    if (String(msg).includes('没有操作此知识库的权限')) {
+      console.log(C.yellow('→ 签名与参数都正确，缺的是应用对该知识库的授权（在平台 API 管理里关联）。'));
+    }
+    throw new Error(`平台业务码 ${bizCode}`);
   }
 
   const docId = parsed.docId ?? parsed.doc_id ?? parsed.id ?? parsed.documentId;
