@@ -1,0 +1,37 @@
+{
+  "name": "knowledge-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "企业智能知识中枢 · 私有文件底座 + 知识库 + 智能体门户",
+  "packageManager": "pnpm@11.5.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "up:data": "docker-compose -f docker-compose.dev.yml up -d",
+    "down:data": "docker-compose -f docker-compose.dev.yml down",
+    "logs:data": "docker-compose -f docker-compose.dev.yml logs -f",
+    "ps:data": "docker-compose -f docker-compose.dev.yml ps",
+    "dev:api": "node scripts/dev-api.mjs",
+    "dev:worker": "pnpm --filter @kh/worker dev",
+    "dev:web": "node scripts/dev-web.mjs",
+    "dev:up": "node scripts/dev-up.mjs",
+    "dev:all": "node scripts/dev-up.mjs",
+    "dev:stop": "node scripts/dev-stop.mjs",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:generate": "pnpm --filter @kh/server-core db:generate",
+    "db:migrate": "pnpm --filter @kh/server-core db:migrate",
+    "db:seed": "pnpm --filter @kh/server-core db:seed",
+    "db:reset": "pnpm --filter @kh/server-core db:reset",
+    "smoke": "node scripts/smoke-e2e.mjs",
+    "probe:platform": "node scripts/probe-platform.mjs",
+    "setup": "pnpm install && pnpm up:data && sleep 6 && pnpm db:migrate && pnpm db:seed"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.13",
+    "typescript": "5.9.3"
+  }
+}

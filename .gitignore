@@ -1,0 +1,41 @@
+# 依赖与构建产物
+node_modules/
+dist/
+build/
+.output/
+.nuxt/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# 环境变量（只提交 .env.example）
+.env
+.env.local
+.env.*.local
+
+# 本地数据（容器数据卷走 named volume，此处仅忽略可能的落盘目录）
+/data/
+
+# 日志与临时文件
+*.log
+npm-debug.log*
+pnpm-debug.log*
+coverage/
+.vite-cache/
+_tmp_*
+*.tmp
+
+# 本地数据库 / 运行时产物
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# 工具产生的本地目录（记忆、缓存等，不随代码分发）
+.workbuddy/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 开发服务后台日志（pnpm dev:up 写入）
+.dev-logs/

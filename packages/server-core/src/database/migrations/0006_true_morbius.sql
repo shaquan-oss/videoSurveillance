@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "mail_draft_id" uuid;

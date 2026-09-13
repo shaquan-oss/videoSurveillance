@@ -1,0 +1,436 @@
+/* ============================================================
+   企业智能知识中枢 · 设计系统
+   令牌与原型保持一致，所以代码实现出来的界面和原型看起来是同一个东西。
+   改动颜色/圆角/阴影只改这里，不要在组件里写死数值。
+   ============================================================ */
+
+:root {
+  /* 中性灰阶（冷调） */
+  --g25: #fcfcfd;
+  --g50: #f9fafb;
+  --g100: #f2f4f7;
+  --g200: #eaecf0;
+  --g300: #d0d5dd;
+  --g400: #98a2b3;
+  --g500: #667085;
+  --g600: #475467;
+  --g700: #344054;
+  --g800: #1d2939;
+  --g900: #101828;
+  /* 主色 */
+  --b50: #eff6ff;
+  --b100: #dbeafe;
+  --b200: #bfdbfe;
+  --b400: #60a5fa;
+  --b500: #3b82f6;
+  --b600: #2563eb;
+  --b700: #1d4ed8;
+  /* 语义色 */
+  --ok: #12b76a;
+  --ok-s: #ecfdf3;
+  --ok-t: #027a48;
+  --wn: #f79009;
+  --wn-s: #fffaeb;
+  --wn-t: #b54708;
+  --er: #f04438;
+  --er-s: #fef3f2;
+  --er-t: #b42318;
+  /* 深色侧栏 */
+  --nav-bg: #101828;
+  --nav-tx: #98a2b3;
+  --nav-on: #ffffff;
+
+  /* 语义化别名（组件里统一用这些） */
+  --paper: #f9fafb;
+  --surface: #ffffff;
+  --line: #eaecf0;
+  --line-soft: #f2f4f7;
+  --ink: #101828;
+  --ink-2: #475467;
+  --ink-3: #667085;
+  --brand: #2563eb;
+  --brand-d: #1d4ed8;
+  --brand-s: #eff6ff;
+  --brand-line: #bfdbfe;
+  --seal: #d6403a;
+  --seal-s: #fef2f1;
+  --seal-line: #fbd5d2;
+
+  --r-xs: 6px;
+  --r-sm: 8px;
+  --r: 10px;
+  --r-l: 14px;
+  --r-xl: 18px;
+  --r-full: 999px;
+  --sh-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --sh-sm: 0 1px 3px rgba(16, 24, 40, 0.07), 0 1px 2px rgba(16, 24, 40, 0.04);
+  --sh-md: 0 4px 8px -2px rgba(16, 24, 40, 0.09), 0 2px 4px -2px rgba(16, 24, 40, 0.05);
+  --sh-lg: 0 12px 24px -4px rgba(16, 24, 40, 0.1), 0 4px 8px -4px rgba(16, 24, 40, 0.05);
+  --sh-pop: 0 8px 24px -4px rgba(16, 24, 40, 0.12), 0 2px 6px -2px rgba(16, 24, 40, 0.06);
+
+  --t: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#__nuxt {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--brand);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* 键盘可达：全局 focus 描边，不要用 outline:none 抹掉它 */
+:focus-visible {
+  outline: 2px solid var(--b500);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* ───────── 按钮 ───────── */
+.btn {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all var(--t);
+  white-space: nowrap;
+}
+.btn:hover {
+  border-color: var(--g300);
+  background: var(--g25);
+}
+.btn:active {
+  transform: translateY(0.5px);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+.btn.primary {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+}
+.btn.primary:hover {
+  background: var(--brand-d);
+  border-color: var(--brand-d);
+}
+.btn.danger {
+  color: var(--er-t);
+  border-color: var(--seal-line);
+}
+.btn.danger:hover {
+  background: var(--er-s);
+}
+.btn.sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+.btn.lg {
+  height: 42px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* ───────── 卡片与面板 ───────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--sh-xs);
+}
+.card-h {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.card-h h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.card-b {
+  padding: 20px;
+}
+
+/* ───────── 徽标与状态点 ───────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-xs);
+  font-size: 11.5px;
+  background: var(--g100);
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.badge.ok {
+  background: var(--ok-s);
+  color: var(--ok-t);
+}
+.badge.warn {
+  background: var(--wn-s);
+  color: var(--wn-t);
+}
+.badge.err {
+  background: var(--er-s);
+  color: var(--er-t);
+}
+.badge.brand {
+  background: var(--brand-s);
+  color: var(--brand);
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+/* ───────── 表格：文档型系统天然适合表格 ───────── */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--ink-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+td {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+tbody tr {
+  transition: background var(--t);
+}
+tbody tr:hover {
+  background: var(--g25);
+}
+tbody tr:last-child td {
+  border-bottom: none;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+/* ───────── 表单 ───────── */
+.field {
+  margin-bottom: 16px;
+}
+.field label {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+  transition:
+    border-color var(--t),
+    box-shadow var(--t);
+}
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+  border-color: var(--b400);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14);
+}
+.field .hint {
+  font-size: 11.5px;
+  color: var(--ink-3);
+  margin-top: 5px;
+}
+
+/* ───────── 通用小工具 ───────── */
+.spacer {
+  flex: 1;
+}
+.tiny {
+  font-size: 11.5px;
+  color: var(--ink-3);
+}
+.muted {
+  color: var(--ink-2);
+}
+.mono {
+  font-family: var(--mono);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 空状态：演示时最容易穿帮的地方，必须在每个列表里都设计好 */
+.empty {
+  padding: 48px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.empty .t {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.empty .d {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  max-width: 420px;
+  line-height: 1.7;
+}
+
+/* 加载骨架 */
+.skel {
+  background: linear-gradient(90deg, var(--g100) 25%, var(--g200) 37%, var(--g100) 63%);
+  background-size: 400% 100%;
+  animation: skelShine 1.4s ease infinite;
+  border-radius: var(--r-xs);
+  height: 14px;
+}
+@keyframes skelShine {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* 提示条 */
+.alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+.alert.err {
+  background: var(--er-s);
+  color: var(--er-t);
+}
+.alert.warn {
+  background: var(--wn-s);
+  color: var(--wn-t);
+}
+.alert.info {
+  background: var(--brand-s);
+  color: var(--brand);
+}
+
+/* 页面标题区 */
+.ph {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.ph h1 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+.ph .desc {
+  font-size: 13px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+/* 密级标识：朱红是全局唯一的强调色，只用在密级与拦截上 */
+.secret {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.secret i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* ───────── 窄屏适配：次要列自动折叠 ───────── */
+@media (max-width: 1200px) {
+  .col-hide-md {
+    display: none;
+  }
+}
+@media (max-width: 1000px) {
+  .col-hide-sm {
+    display: none;
+  }
+  .ph h1 {
+    font-size: 19px;
+  }
+}

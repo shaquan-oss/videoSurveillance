@@ -1,0 +1,17 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 出于安全默认拦截依赖的安装脚本。
+# esbuild 需要下载对应平台的二进制（tsx 依赖它），Biome 同理，这里显式放行。
+# @scarf/scarf 只是匿名统计包，不需要执行它的脚本，显式声明忽略，避免每次启动都被拦。
+allowBuilds:
+  esbuild: true
+  "@biomejs/biome": true
+  "@scarf/scarf": false
+  # bullmq 的可选原生加速件，不编译也能跑（走 JS 兜底实现）
+  msgpackr-extract: false
+
+minimumReleaseAgeExclude:
+  - "@aws-sdk/client-s3@3.1131.0"
+  - "@aws-sdk/s3-request-presigner@3.1131.0"

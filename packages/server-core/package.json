@@ -1,0 +1,40 @@
+{
+  "name": "@kh/server-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./database": "./src/database/client.ts",
+    "./schema": "./src/database/schema/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "DOTENV_CONFIG_PATH=../../.env tsx src/scripts/migrate.ts",
+    "db:seed": "DOTENV_CONFIG_PATH=../../.env tsx src/scripts/seed.ts",
+    "db:reset": "DOTENV_CONFIG_PATH=../../.env tsx src/scripts/reset.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1131.0",
+    "@aws-sdk/s3-request-presigner": "3.1131.0",
+    "@kh/shared": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "ioredis": "6.0.0",
+    "mammoth": "^1.12.2",
+    "pdf-parse": "^2.4.5",
+    "pg": "8.23.0",
+    "pino": "9.7.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.19.19",
+    "@types/pg": "8.11.10",
+    "dotenv": "16.4.7",
+    "drizzle-kit": "0.31.10",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}

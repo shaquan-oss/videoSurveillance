@@ -1,0 +1,90 @@
+# ══════════════════════════════════════════════════════════════
+#  开发档编排：只启动三个数据容器
+#  应用（api / worker / web）在宿主机直接跑，改代码即时生效
+#  用法：pnpm up:data  /  pnpm down:data  /  pnpm logs:data
+# ══════════════════════════════════════════════════════════════
+name: knowledge-hub-dev
+
+services:
+  # ── PostgreSQL + pgvector ───────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: khub-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: khub
+      POSTGRES_PASSWORD: khub_dev_pwd
+      POSTGRES_DB: knowledge_hub
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U khub -d knowledge_hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    mem_limit: 1g
+    command:
+      - postgres
+      # 中文全文检索可用 pg_trgm 兜底；向量检索由 pgvector 提供
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - max_connections=60
+
+  # ── Redis（会话 / 缓存 / 队列）───────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: khub-redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    # 注意：任务队列要求 noeviction。用 allkeys-lru 时内存一满，排队中的任务键会被
+    # 静默淘汰，表现为「定时任务莫名没执行」且极难排查。宁可写入报错，也不要静默丢任务。
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "220mb", "--maxmemory-policy", "noeviction"]
+
+  # ── MinIO（S3 协议对象存储）─────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: khub-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: khub_minio
+      MINIO_ROOT_PASSWORD: khub_minio_dev_pwd
+      MINIO_BROWSER_REDIRECT_URL: http://127.0.0.1:9001
+      TZ: Asia/Shanghai
+    ports:
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # 控制台
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 8s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    mem_limit: 512m
+    command: ["server", "/data", "--console-address", ":9001"]
+
+volumes:
+  pgdata:
+    name: khub_pgdata
+  redisdata:
+    name: khub_redisdata
+  miniodata:
+    name: khub_miniodata
