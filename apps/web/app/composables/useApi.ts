@@ -284,6 +284,9 @@ export function useApi() {
         conversationId?: string | null;
         modelKey?: string;
         scopeKbIds?: string[];
+        agentId?: string;
+        /** 要直读的文件（用户刚上传的），后端会把整份内容并入上下文 */
+        attachFileIds?: string[];
       },
       onEvent: (event: AskEvent) => void,
       signal?: AbortSignal,

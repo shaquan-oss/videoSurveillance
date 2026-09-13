@@ -353,7 +353,14 @@ export class KnowledgeBasesService {
     if (!check.ok) throw new AppError(ErrorCode.FORBIDDEN, { message: check.reason });
 
     if (!this.parser.extensions.includes(row.extension)) {
-      throw new AppError(ErrorCode.KB_UNSUPPORTED_FORMAT, { message: `暂不支持解析 .${row.extension} 文件` });
+      const message = `暂不支持解析 .${row.extension} 文件（当前支持 ${this.parser.extensions.map((e) => `.${e}`).join(' / ')}）`;
+      // 抛错前先把原因写进文件记录：否则文件管理页里它只是个「未纳入」，
+      // 用户既不知道哪里错了，也无从下手。
+      await this.db
+        .update(schema.files)
+        .set({ indexStatus: 'failed', parseError: message })
+        .where(eq(schema.files.id, fileId));
+      throw new AppError(ErrorCode.KB_UNSUPPORTED_FORMAT, { message });
     }
 
     await this.db.update(schema.files).set({ indexStatus: 'parsing', parseError: null }).where(eq(schema.files.id, fileId));

@@ -138,6 +138,8 @@ async function send(text?: string) {
         ...(selectedModel.value ? { modelKey: selectedModel.value } : {}),
         ...(scopeKbIds.value.length ? { scopeKbIds: scopeKbIds.value } : {}),
         ...(selectedAgentId.value ? { agentId: selectedAgentId.value } : {}),
+        // 刚上传的文件整份直读，不靠相似度抽样
+        ...(attachedFiles.value.length ? { attachFileIds: attachedFiles.value.map((f) => f.id) } : {}),
       },
       (event) => {
         switch (event.type) {
@@ -231,10 +233,20 @@ const uploadInput = ref<HTMLInputElement | null>(null);
 const uploadTarget = ref<string | null>(null);
 const uploading = ref(false);
 
+/**
+ * 本次提问要「直读」的文件（一般是刚上传的）。
+ * 它们整份进上下文，不靠相似度抽样 —— 用户传了文件就是想针对它提问。
+ */
+const attachedFiles = ref<{ id: string; name: string }[]>([]);
+
+function detachFile(id: string) {
+  attachedFiles.value = attachedFiles.value.filter((f) => f.id !== id);
+}
+
 function pickUpload() {
   const target = scopeKbIds.value[0] ?? (kbs.value.length === 1 ? kbs.value[0]!.id : null);
   if (!target) {
-    toast('先点下方的 @ 知识库选一个，再上传', 'err');
+    toast('请先用「@引用知识库」选一个库，文件会传进该库', 'err');
     return;
   }
   uploadTarget.value = target;
@@ -259,7 +271,28 @@ async function onUpload(e: Event) {
   uploading.value = true;
   try {
     const res = await api.kbUpload(uploadTarget.value, form);
-    toast(`已上传并纳入 ${res.okCount} 个文件${res.failCount ? `，${res.failCount} 个未能解析` : ''}`);
+    const results = res.results ?? [];
+    const failed = results.filter((r) => !r.ok);
+    const succeeded = results.filter((r) => r.ok && r.fileId);
+
+    // 成功的挂成本次提问的附件，模型能读到全文而不是只取相似片段
+    for (const f of succeeded) {
+      if (!attachedFiles.value.some((x) => x.id === f.fileId)) {
+        attachedFiles.value.push({ id: f.fileId!, name: f.name });
+      }
+    }
+
+    if (failed.length === 0) {
+      toast(`已纳入 ${res.okCount} 个文件，可以开始提问了`);
+    } else {
+      // 光说「N 个未能解析」等于没说 —— 必须讲清是哪个文件、为什么失败
+      const detail = failed.map((f) => `· ${f.name}：${f.error ?? '未知原因'}`).join('\n');
+      const head = res.okCount
+        ? `${res.okCount} 个已纳入，${failed.length} 个失败：`
+        : `${failed.length} 个文件都没能纳入：`;
+      toast(`${head}\n${detail}`, 'err');
+    }
+
     await refreshKbs();
   } catch (err) {
     toast(err instanceof Error ? err.message : '上传失败', 'err');
@@ -583,6 +616,14 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
           <textarea v-model="input" placeholder="例如：差旅报销要准备哪些材料？流程是怎么走的？" @keydown.enter.exact.prevent="send()" />
           <!-- atMenuRef 同时包住按钮与菜单，供「点击外部关闭」判断边界 -->
           <div ref="atMenuRef" class="at-wrap">
+            <!-- 已附加的文件：明确告诉用户模型这次会读到它们 -->
+            <div v-if="attachedFiles.length" class="attach-row">
+              <span class="attach-label">本次会读这些文件</span>
+              <span v-for="f in attachedFiles" :key="f.id" class="attach-chip">
+                {{ f.name }}
+                <button class="attach-x" title="移除" @click="detachFile(f.id)">×</button>
+              </span>
+            </div>
             <div class="cbar">
               <button class="upbtn" :disabled="uploading" @click="pickUpload">
                 {{ uploading ? '上传中…' : '＋ 上传文件' }}
@@ -846,7 +887,24 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 .send { margin-left: auto; height: 32px; padding: 0 16px; border: none; border-radius: var(--r-sm); background: var(--brand); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
 .send:disabled { opacity: .5; cursor: not-allowed; }
 
-.menu-wide { position: absolute; bottom: 66px; left: 12px; width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh-pop); padding: 6px; z-index: 20; }
+/* 工具栏包裹层：菜单相对它定位，这样加了「已附加文件」一行也不会错位 */
+.at-wrap { position: relative; }
+
+/* 已附加文件提示条 */
+.attach-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.attach-label { font-size: 11.5px; color: var(--ink-3); }
+.attach-chip {
+  display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 4px 0 8px;
+  border-radius: var(--r-full); background: var(--brand-s); color: var(--brand);
+  font-size: 11.5px; max-width: 220px;
+}
+.attach-x {
+  border: 0; background: none; cursor: pointer; color: inherit; font-size: 13px;
+  line-height: 1; padding: 0 3px; font-family: inherit;
+}
+.attach-x:hover { opacity: .7; }
+
+.menu-wide { position: absolute; bottom: calc(100% + 8px); left: 0; width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh-pop); padding: 6px; z-index: 20; }
 /* 菜单底部的操作提示，与上面的知识库列表隔开 */
 .mh-foot { border-top: 1px solid var(--line-soft); margin-top: 4px; padding-top: 8px; }
 .mh { font-size: 11.5px; color: var(--ink-3); padding: 6px 8px; }
@@ -1053,6 +1111,7 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 .modal-f { display: flex; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line-soft); }
 
 .toasts { position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); z-index: 400; display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.toast { padding: 10px 18px; border-radius: var(--r-sm); background: var(--g900); color: #fff; font-size: 13px; }
+/* pre-line + max-width：让上传失败之类的提示能逐条换行显示原因，而不是挤成一行 */
+.toast { padding: 10px 18px; border-radius: var(--r-sm); background: var(--g900); color: #fff; font-size: 13px; max-width: 560px; line-height: 1.6; white-space: pre-line; text-align: left; }
 .toast.err { background: var(--er-t); }
 </style>

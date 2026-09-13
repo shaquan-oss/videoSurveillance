@@ -184,7 +184,10 @@ export class ConversationsService {
       kbIds: resolveScope(agent, input.scopeKbIds),
       topK: RETRIEVAL_TOP_K,
     });
-    const citations = buildCitations(hits);
+    // 附件直读：用户刚上传的文件整份并入上下文，排在检索结果之前
+    const attached = await this.loadAttachedChunks(ctx, input.attachFileIds);
+    const context = attached.length ? [...attached, ...hits] : hits;
+    const citations = buildCitations(context);
 
     // 2. 保存用户提问，组装上下文并生成
     await this.db.insert(schema.messages).values({
@@ -194,7 +197,7 @@ export class ConversationsService {
       content: input.question,
     });
     const history = await this.recentHistory(conversationId);
-    const prompt = buildPrompt(input.question, hits, history, agent);
+    const prompt = buildPrompt(input.question, context, history, agent);
     const result = await this.model.chat(prompt, {
       modelKey: input.modelKey ?? agent?.modelKey ?? undefined,
       temperature: ANSWER_TEMPERATURE,
@@ -227,7 +230,7 @@ export class ConversationsService {
       citations: citations as unknown[],
       followUps,
       mailDraftId: mailDraft?.id ?? null,
-      retrievedChunkIds: hits.map((h) => h.chunkId),
+      retrievedChunkIds: context.map((h) => h.chunkId),
       modelKey: result.model ?? null,
       elapsedMs: result.elapsedMs,
       tokensIn: result.tokensIn ?? null,
@@ -290,7 +293,10 @@ export class ConversationsService {
       kbIds: resolveScope(agent, input.scopeKbIds),
       topK: RETRIEVAL_TOP_K,
     });
-    const citations = buildCitations(hits);
+    // 附件直读：用户刚上传的文件整份并入上下文，排在检索结果之前
+    const attached = await this.loadAttachedChunks(ctx, input.attachFileIds);
+    const context = attached.length ? [...attached, ...hits] : hits;
+    const citations = buildCitations(context);
     yield { type: 'citations', citations };
 
     await this.db.insert(schema.messages).values({
@@ -301,7 +307,7 @@ export class ConversationsService {
     });
 
     const history = await this.recentHistory(conversationId);
-    const prompt = buildPrompt(input.question, hits, history, agent);
+    const prompt = buildPrompt(input.question, context, history, agent);
 
     const started = Date.now();
     const splitter = new AnswerSplitter();
@@ -354,7 +360,7 @@ export class ConversationsService {
       citations: citations as unknown[],
       followUps,
       mailDraftId: mailDraft?.id ?? null,
-      retrievedChunkIds: hits.map((h) => h.chunkId),
+      retrievedChunkIds: context.map((h) => h.chunkId),
       modelKey,
       elapsedMs: Date.now() - started,
       createdAt,
@@ -500,6 +506,50 @@ export class ConversationsService {
     this.logger.warn(
       `[runMode-guard] agent「${agent.name}」启用 remote 模式，scope 内有 ${sensitive.length} 个高敏感级库`,
     );
+  }
+
+  /**
+   * 读出「附件直读」文件的全部切片。
+   *
+   * 与 retrieve() 的区别：不做相似度排序、不截断，整份文件按 chunkIndex 全取 ——
+   * 用户刚上传文件就提问，通常希望对这份文件有完整理解，而不是 top-K 抽样。
+   * 只取当前用户名下的切片（对话页上传的文件 owner 必然是自己），越权取不到就是空。
+   */
+  private async loadAttachedChunks(ctx: AuthContext, fileIds?: string[]): Promise<RetrievedChunk[]> {
+    if (!fileIds?.length) return [];
+
+    const rows = await this.db
+      .select({
+        chunkId: schema.chunks.id,
+        fileId: schema.chunks.fileId,
+        fileName: schema.files.name,
+        kbId: schema.chunks.kbId,
+        content: schema.chunks.content,
+        chunkIndex: schema.chunks.chunkIndex,
+        page: schema.chunks.page,
+      })
+      .from(schema.chunks)
+      .innerJoin(schema.files, eq(schema.files.id, schema.chunks.fileId))
+      .where(
+        and(
+          inArray(schema.chunks.fileId, fileIds),
+          eq(schema.chunks.ownerId, ctx.userId),
+          isNull(schema.files.deletedAt),
+        ),
+      )
+      .orderBy(schema.chunks.fileId, schema.chunks.chunkIndex);
+
+    return rows.map((r) => ({
+      chunkId: r.chunkId,
+      fileId: r.fileId,
+      fileName: r.fileName,
+      kbId: r.kbId,
+      content: r.content,
+      // 直读内容不是靠相似度命中的，分数给满，让它们排在检索结果之前
+      score: 1,
+      chunkIndex: r.chunkIndex,
+      page: r.page,
+    }));
   }
 
   private assertRemoteReady(agent: AgentContext): { client: PlatformAgentClient; assistantCode: string } {
