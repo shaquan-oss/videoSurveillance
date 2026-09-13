@@ -37,7 +37,7 @@ function activate() {
     <div
       class="knode"
       :class="{ on: isSelected, folder: isFolder }"
-      :style="{ paddingLeft: `${10 + depth * 14}px` }"
+      :style="{ paddingLeft: `${10 + depth * 10}px` }"
       :title="node.name"
       @click="activate"
     >
@@ -184,9 +184,10 @@ function activate() {
 .nm {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 允许换行：深嵌套时名字也能完整显示，避免被截成 … */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.4;
 }
 .more {
   flex-shrink: 0;
