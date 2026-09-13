@@ -1277,6 +1277,19 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
               <template v-else>
                 <button class="act" @click="openPreview(f)">打开</button>
                 <button v-if="can('file:download')" class="act" @click="download(f)">下载</button>
+                <!--
+                  「纳入」是「还没真正可用」的文件的关键操作：
+                  · not_ingested：从未纳入知识库（用户最常见的情况，文件管理页上传的就这样）
+                  · failed：纳入时解析失败（用户的「印章.jpg」现在就是这个状态）
+                  这两种都点一下 → 重新跑 ingest 流程。
+                -->
+                <button
+                  v-if="['not_ingested', 'failed'].includes(f.indexStatus) && can('file:upload')"
+                  class="act primary"
+                  @click="openIngestDialog({ kind: 'files', items: [f] })"
+                >
+                  纳入
+                </button>
                 <button class="act icon" title="更多操作" @click="toggleMenu(f.id, $event)">···</button>
 
                 <div v-if="openMenuId === f.id" class="menu" @click.stop>
@@ -2143,6 +2156,9 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 /* ───────── 行内 act 按钮的「危险」变体 ───────── */
 .act.danger { color: var(--er-t); }
 .act.danger:hover { background: var(--er-s); }
+/* 「纳入」按钮：not_ingested 行的关键操作，要比 ··· 更显眼 */
+.act.primary { color: var(--brand); font-weight: 500; }
+.act.primary:hover { background: var(--brand-s); color: var(--brand); }
 
 /* ───────── 移动对话框里的「顶层 / 树」区域 ───────── */
 .move-target {

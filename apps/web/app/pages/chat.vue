@@ -904,7 +904,8 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 }
 .attach-x:hover { opacity: .7; }
 
-.menu-wide { position: absolute; bottom: calc(100% + 8px); left: 0; width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: var(--sh-pop); padding: 6px; z-index: 20; }
+/* 菜单从工具栏下方展开 —— 上方是智能体卡片，会被挡；下方只是提示行，可接受 */
+.menu-wide { position: absolute; top: calc(100% + 6px); left: 0; width: 240px; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sm); box-shadow: 0 4px 16px rgba(0,0,0,.12); padding: 6px; z-index: 30; }
 /* 菜单底部的操作提示，与上面的知识库列表隔开 */
 .mh-foot { border-top: 1px solid var(--line-soft); margin-top: 4px; padding-top: 8px; }
 .mh { font-size: 11.5px; color: var(--ink-3); padding: 6px 8px; }
