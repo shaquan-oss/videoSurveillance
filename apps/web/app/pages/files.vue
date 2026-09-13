@@ -1971,8 +1971,7 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
   gap: 16px;
 }
 .tree-panel {
-  width: 232px;
-  flex-shrink: 0;
+  width: 280px; min-width: 240px; flex: 0 0 auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--r);

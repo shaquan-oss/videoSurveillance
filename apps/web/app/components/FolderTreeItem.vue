@@ -117,6 +117,7 @@ const indent = computed(() => `${props.depth * 14}px`);
 
 <style scoped>
 .tree-node {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -169,10 +170,14 @@ const indent = computed(() => `${props.depth * 14}px`);
   white-space: nowrap;
 }
 
-/* 行内小按钮：默认隐藏，鼠标移到整行才出现 */
+/* 行内小按钮：absolute 浮在最右，不挤压 .tree-name 的弹性宽度 */
 .tree-btn {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   flex-shrink: 0;
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   width: 18px;
@@ -185,18 +190,19 @@ const indent = computed(() => `${props.depth * 14}px`);
   font-size: 13px;
   line-height: 1;
   padding: 0;
-  opacity: 0;
-  transition: opacity var(--t), background var(--t), color var(--t);
+  transition: background var(--t), color var(--t);
 }
+/* 5 个 .tree-btn 反向定位（× 在最右、往前顺延） */
+.tree-btn:nth-last-child(1) { right: 4px; }
+.tree-btn:nth-last-child(2) { right: 22px; }
+.tree-btn:nth-last-child(3) { right: 40px; }
+.tree-btn:nth-last-child(4) { right: 58px; }
+.tree-btn:nth-last-child(5) { right: 76px; }
 .tree-node:hover .tree-btn {
-  opacity: 1;
+  display: flex;
 }
-.tree-btn:hover {
-  background: var(--g100);
-  color: var(--brand);
-}
-.tree-btn.danger:hover {
-  background: var(--er-s);
-  color: var(--er-t);
+/* hover 时给名字留 100px 位置，避免被浮起的按钮遮住尾部 */
+.tree-node:hover .tree-name {
+  padding-right: 100px;
 }
 </style>
