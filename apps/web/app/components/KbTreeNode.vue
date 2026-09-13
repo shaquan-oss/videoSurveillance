@@ -108,6 +108,7 @@ function activate() {
 
 <style scoped>
 .knode {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -188,7 +189,12 @@ function activate() {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 操作按钮：absolute 浮在最右边，不挤压 .nm 的可用宽度 */
 .more {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
   flex-shrink: 0;
   display: none;
   align-items: center;
@@ -203,8 +209,17 @@ function activate() {
   font-size: 12px;
   line-height: 1;
 }
+/* 4 个 more 反向定位靠右，最右（×）在 4px，往左每个 +20px */
+.more:nth-last-child(1) { right: 4px; }
+.more:nth-last-child(2) { right: 24px; }
+.more:nth-last-child(3) { right: 44px; }
+.more:nth-last-child(4) { right: 64px; }
 .knode:hover .more {
   display: flex;
+}
+/* hover 时给名字尾部留出 88px，避免被浮起的按钮遮住 */
+.knode:hover .nm {
+  padding-right: 88px;
 }
 .more:hover {
   background: var(--g200, var(--g100));
