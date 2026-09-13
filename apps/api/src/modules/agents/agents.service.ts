@@ -17,7 +17,17 @@ export interface AgentInput {
   icon?: string;
   visibility?: Agent['visibility'];
   publishStatus?: Agent['publishStatus'];
+  /**
+   * 运行模式：local=本地编排+本地 RAG；remote=转发给聚智平台智能体。
+   * 选 remote 时必须带 platformAssistantCode，否则对话会直接失败。
+   */
+  runMode?: AgentRunMode;
+  /** 平台侧智能体的 assistantCode，仅 remote 模式需要 */
+  platformAssistantCode?: string | null;
 }
+
+/** 智能体运行模式。与 shared 的 Agent.runMode 保持一致 */
+export type AgentRunMode = 'local' | 'remote';
 
 /**
  * 智能体。
@@ -82,6 +92,10 @@ export class AgentsService {
       throw new AppError(ErrorCode.BAD_REQUEST, { message: '人设提示词不能为空' });
     }
 
+    const runMode = input.runMode ?? 'local';
+    const platformAssistantCode = input.platformAssistantCode?.trim() || null;
+    assertRunModeValid(runMode, platformAssistantCode);
+
     const id = randomUUID();
     await this.db.insert(schema.agents).values({
       id,
@@ -96,6 +110,8 @@ export class AgentsService {
       icon: input.icon ?? '🤖',
       publishStatus: input.publishStatus ?? 'draft',
       visibility: input.visibility ?? 'private',
+      runMode,
+      platformAssistantCode,
       ownerId: ctx.userId,
       departmentId: ctx.departmentId,
     });
@@ -105,6 +121,14 @@ export class AgentsService {
   async update(ctx: AuthContext, id: string, input: Partial<AgentInput>): Promise<Agent> {
     const row = await this.assertOwner(ctx, id);
     if (input.name) await this.assertNameFree(input.name, id);
+
+    // 运行模式支持「只切 mode」或「只改 code」，按合并后的值校验，避免误报
+    const nextRunMode = input.runMode ?? (row.runMode as AgentRunMode) ?? 'local';
+    const nextCode =
+      input.platformAssistantCode !== undefined
+        ? input.platformAssistantCode?.trim() || null
+        : row.platformAssistantCode;
+    assertRunModeValid(nextRunMode, nextCode);
 
     await this.db
       .update(schema.agents)
@@ -120,6 +144,8 @@ export class AgentsService {
         ...(input.icon ? { icon: input.icon } : {}),
         ...(input.visibility ? { visibility: input.visibility } : {}),
         ...(input.publishStatus ? { publishStatus: input.publishStatus } : {}),
+        ...(input.runMode !== undefined ? { runMode: nextRunMode } : {}),
+        ...(input.platformAssistantCode !== undefined ? { platformAssistantCode: nextCode } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.agents.id, id));
@@ -276,8 +302,21 @@ export class AgentsService {
       isPublic: r.visibility === 'company',
       // 老数据 runMode 列不存在或为 null 时一律按本地处理，避免 UI 误判
       runMode: (r.runMode ?? 'local') as 'local' | 'remote',
+      platformAssistantCode: r.platformAssistantCode ?? null,
       createdAt: r.createdAt.toISOString(),
       updatedAt: r.updatedAt.toISOString(),
     };
+  }
+}
+
+/**
+ * 远程模式必须带 assistantCode —— 缺了它对话会走到 platform 分支后直接抛错，
+ * 与其等到用户提问才失败，不如在保存配置时就拦住。
+ */
+function assertRunModeValid(runMode: AgentRunMode, code: string | null | undefined): void {
+  if (runMode === 'remote' && !code?.trim()) {
+    throw new AppError(ErrorCode.BAD_REQUEST, {
+      message: '远程模式需要填写聚智平台的智能体编码（assistantCode）',
+    });
   }
 }

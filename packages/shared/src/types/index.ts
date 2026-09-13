@@ -437,6 +437,11 @@ export interface Agent {
    * 老数据没填时默认 'local'，避免破坏现有智能体卡片。
    */
   runMode?: 'local' | 'remote';
+  /**
+   * 聚智平台侧智能体的 assistantCode，仅 runMode='remote' 时有值。
+   * 远程对话时由后端拼到 URL 查询串上（不放 header）。
+   */
+  platformAssistantCode?: string | null;
   createdAt: string;
   updatedAt: string;
 }

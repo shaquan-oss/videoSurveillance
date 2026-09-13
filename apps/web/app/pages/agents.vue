@@ -134,6 +134,8 @@ const form = reactive({
   scopeKbIds: [] as string[],
   skillIds: [] as string[],
   visibility: 'private' as Agent['visibility'],
+  runMode: 'local' as 'local' | 'remote',
+  platformAssistantCode: '',
 });
 
 const icons = ['🤖', '📝', '✉️', '💰', '📊', '🔍', '📋', '🧾'];
@@ -150,6 +152,8 @@ function resetForm() {
     scopeKbIds: [],
     skillIds: [],
     visibility: 'private',
+    runMode: 'local',
+    platformAssistantCode: '',
   });
   error.value = '';
   testQuestion.value = '';
@@ -179,6 +183,8 @@ function openEdit(a: AgentCard) {
     scopeKbIds: [...a.scopeKbIds],
     skillIds: [...a.skillIds],
     visibility: a.visibility,
+    runMode: a.runMode ?? 'local',
+    platformAssistantCode: a.platformAssistantCode ?? '',
   });
   tested.value = !!a.testedAt;
   dialog.value = true;
@@ -194,6 +200,8 @@ function toggleSkill(id: string) {
 
 const canNext = computed(() => {
   if (step.value === 0) return !!form.name.trim() && !!form.systemPrompt.trim();
+  // 远程模式先把 assistantCode 填了，避免走到最后一步保存时才被后端打回
+  if (step.value === 1 && form.runMode === 'remote') return !!form.platformAssistantCode.trim();
   return true;
 });
 
@@ -216,6 +224,9 @@ async function saveDraft(): Promise<string | null> {
       scopeKbIds: form.scopeKbIds,
       skillIds: form.skillIds,
       visibility: form.visibility,
+      runMode: form.runMode,
+      // 本地模式下把 code 一并存着，方便来回切换不用重填；清了也不影响本地链路
+      platformAssistantCode: form.platformAssistantCode.trim() || null,
     };
     if (editingId.value) {
       await api.updateAgent(editingId.value, payload);
@@ -326,6 +337,7 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
             <div class="agent-name">
               {{ a.name }}
               <span v-if="a.isBuiltin" class="tag builtin">内置</span>
+              <span v-if="a.runMode === 'remote'" class="tag remote" title="对话转发给聚智平台的原生智能体">远程</span>
               <span class="tag" :class="a.publishStatus">{{ statusText(a) }}</span>
             </div>
             <div class="tiny">{{ visibilityText(a) }}<template v-if="a.runCount"> · 用过 {{ a.runCount }} 次</template></div>
@@ -400,9 +412,25 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
             </div>
           </template>
 
-          <!-- 2 选择模型 -->
+          <!-- 2 运行模式与模型 -->
           <template v-else-if="step === 1">
             <div class="field">
+              <label>运行模式</label>
+              <div class="chips">
+                <button class="chip" :class="{ on: form.runMode === 'local' }" @click="form.runMode = 'local'">本地</button>
+                <button class="chip" :class="{ on: form.runMode === 'remote' }" @click="form.runMode = 'remote'">远程</button>
+              </div>
+              <div class="tiny">
+                <template v-if="form.runMode === 'local'">
+                  在本系统内完成检索与生成：模型、知识库、技能都在本地生效。
+                </template>
+                <template v-else>
+                  转发给聚智平台的原生智能体，检索与生成都由平台负责。本地的模型、知识库、技能配置对远程回答不生效。
+                </template>
+              </div>
+            </div>
+
+            <div v-if="form.runMode === 'local'" class="field">
               <label>默认模型</label>
               <select v-model="form.modelKey" class="sel" style="width: 100%">
                 <option value="">跟随全局默认</option>
@@ -412,10 +440,22 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
               </select>
               <div class="tiny">模型不可用时系统会自动切到备用模型，并在回答上方提示。</div>
             </div>
+
+            <div v-else class="field">
+              <label>平台智能体编码（assistantCode）</label>
+              <input v-model="form.platformAssistantCode" placeholder="在聚智平台智能体详情页获取" />
+              <div class="tiny">
+                需先在聚智平台创建好智能体并关联知识库。服务端 <code>.env</code> 还须配好
+                <code>PLATFORM_HOST</code> / <code>PLATFORM_APP_ID</code> / <code>PLATFORM_APP_SECRET</code>，否则远程调用会直接失败。
+              </div>
+            </div>
           </template>
 
           <!-- 3 挂知识库 -->
           <template v-else-if="step === 2">
+            <div v-if="form.runMode === 'remote'" class="mode-warn">
+              当前是远程模式：检索由聚智平台的智能体自己做，这里选的本地知识库范围不生效。
+            </div>
             <div class="field">
               <label>检索范围（不选 = 全部可见知识库）</label>
               <div class="chips">
@@ -430,6 +470,9 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 
           <!-- 4 装技能 -->
           <template v-else-if="step === 3">
+            <div v-if="form.runMode === 'remote'" class="mode-warn">
+              当前是远程模式：技能由聚智平台的智能体自己编排，这里装配的本地技能不生效。
+            </div>
             <div class="field">
               <label>装配技能（可多选）</label>
               <div class="skill-list">
@@ -509,6 +552,18 @@ function toast(text: string, kind: 'ok' | 'err' = 'ok') {
 .tag.published { background: var(--ok-s, #EAF3DE); color: var(--ok-t, #3B6D11); }
 .tag.disabled { background: var(--er-s, #FCEBEB); color: var(--er-t, #A32D2D); }
 .tag.builtin { background: var(--brand-s); color: var(--brand); }
+.tag.remote { background: #ece1ff; color: #6b3fb5; }
+
+/* 远程模式下「这块配置不生效」的提示条 */
+.mode-warn {
+  margin-bottom: 12px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: #f5efff;
+  color: #6b3fb5;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .agent-desc { font-size: 12.5px; color: var(--ink-2); line-height: 1.65; margin: 0; flex: 1; }
 .like { color: var(--ink-3); }
 .meta { display: flex; flex-direction: column; gap: 3px; }
